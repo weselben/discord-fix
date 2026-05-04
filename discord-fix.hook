@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = discord
+
+[Action]
+Description = Apply discord-fix settings to user Discord configs
+When = PostTransaction
+Exec = /usr/lib/discord-fix/discord-fix-script.sh

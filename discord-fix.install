@@ -1,0 +1,8 @@
+post_install() {
+  echo "Running discord-fix to apply settings..."
+  /usr/lib/discord-fix/discord-fix-script.sh
+}
+
+post_upgrade() {
+  post_install
+}
