@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Override version (e.g., v1.0.0). Leave empty for auto semantic versioning.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -32,6 +37,7 @@ jobs:
           default_bump: patch
           release_branches: main
           tag_prefix: v
+          custom_tag: ${{ inputs.version }}
 
   build-and-test:
     needs: version
