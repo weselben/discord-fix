@@ -42,13 +42,18 @@ process_home() {
     echo "Created backup: $backup_file"
   fi
 
-  # Apply change using jq (required dependency)
-  local tmp_file="${settings_file}.tmp"
-  if [[ -s "$settings_file" ]]; then
-    jq --arg key "$SETTING_KEY" --argjson val "$EXPECTED_VALUE" '.[$key] = $val' "$settings_file" > "$tmp_file"
-  else
-    jq -n --arg key "$SETTING_KEY" --argjson val "$EXPECTED_VALUE" '{($key): $val}' > "$tmp_file"
-  fi
+   # Apply change using jq (required dependency)
+   local tmp_file="${settings_file}.tmp"
+   
+   # Update only our key, preserve everything else
+   # Use jq to read and update in one pass
+   if [[ -s "$settings_file" ]] && jq empty "$settings_file" 2>/dev/null; then
+     jq --arg key "$SETTING_KEY" --argjson val "$EXPECTED_VALUE" '.[$key] = $val' "$settings_file" > "$tmp_file"
+   else
+     jq -n --arg key "$SETTING_KEY" --argjson val "$EXPECTED_VALUE" '{($key): $val}' > "$tmp_file"
+   fi
+   
+   echo "Updated $settings_file (merged with existing config)"
 
   # Validate generated JSON
   if ! jq . "$tmp_file" >/dev/null 2>&1; then

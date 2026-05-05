@@ -80,31 +80,55 @@ jobs:
         run: |
           TEST_HOME=$(mktemp -d)
           mkdir -p "$TEST_HOME/.config/discord"
-          echo '{"SKIP_HOST_UPDATE": false}' > "$TEST_HOME/.config/discord/settings.json"
           
+          # Realistic Discord settings.json with multiple values
+          cat > "$TEST_HOME/.config/discord/settings.json" << 'JSON'
+          {
+            "SKIP_HOST_UPDATE": false,
+            "IS_MAXIMIZED": true,
+            "IS_MINIMIZED": false,
+            "SHOULD_ASK_FOR_HARDWARE_ACCELERATION": true,
+            "START_MINIMIZED": false,
+            "LAST_RUN_VERSION": "0.0.99"
+          }
+          JSON
+          
+          echo "Initial settings:"
+          cat "$TEST_HOME/.config/discord/settings.json"
+          
+          # Mock discord binary
           mkdir -p /usr/bin
           echo '#!/bin/bash' > /usr/bin/discord
           chmod +x /usr/bin/discord
           
           echo "Testing script..."
-          env HOME_OVERRIDE="$TEST_HOME" bash discord-fix-script.sh
+          export HOME_OVERRIDE="$TEST_HOME"
+          bash discord-fix-script.sh
           
-          echo "Verifying settings..."
-          echo "File content:"
+          echo "Final settings:"
           cat "$TEST_HOME/.config/discord/settings.json"
-          echo "Hex dump:"
-          xxd "$TEST_HOME/.config/discord/settings.json" | head -20
+          
+          echo "Verifying SKIP_HOST_UPDATE = true..."
           jq -e '.SKIP_HOST_UPDATE == true' "$TEST_HOME/.config/discord/settings.json" || {
             echo "TEST FAILED: SKIP_HOST_UPDATE not set to true"
             exit 1
           }
           
+          echo "Verifying other keys preserved..."
+          for key in IS_MAXIMIZED SHOW_ASK_FOR_HARDWARE_ACCELERATION START_MINIMIZED LAST_RUN_VERSION; do
+            jq -e ".$key" "$TEST_HOME/.config/discord/settings.json" >/dev/null || {
+              echo "TEST FAILED: $key was removed"
+              exit 1
+            }
+          done
+          
+          echo "Checking backup created..."
           ls "$TEST_HOME/.config/discord/settings.json.discord-fix-backup-"* >/dev/null 2>&1 || {
             echo "TEST FAILED: Backup not created"
             exit 1
           }
           
-          echo "All tests passed"
+          echo "All tests passed - JSON structure preserved"
           rm -rf "$TEST_HOME"
 
       - name: Upload artifacts
@@ -135,8 +159,16 @@ jobs:
 
       - name: Update PKGBUILD
         run: |
-          sed -i "s|sha512sums=.*|sha512sums=('$(sha512sum discord-fix-script.sh | cut -d' ' -f1)' '$(sha512sum discord-fix.hook | cut -d' ' -f1)' '$(sha512sum LICENSE | cut -d' ' -f1)')|" PKGBUILD
+          # Generate fresh checksums line (avoids multi-line sed issues)
+          NEW_CHECKSUMS="sha512sums=('$(sha512sum discord-fix-script.sh | cut -d' ' -f1)' '$(sha512sum discord-fix.hook | cut -d' ' -f1)' '$(sha512sum LICENSE | cut -d' ' -f1)')"
+          
+          # Replace entire checksums line
+          sed -i "/^sha512sums=/c\\$NEW_CHECKSUMS" PKGBUILD
+          
+          # Update version
           sed -i "s/pkgver=.*/pkgver=${{ needs.build-and-test.outputs.version }}/" PKGBUILD
+          
+          echo "Updated PKGBUILD:"
           cat PKGBUILD
 
       - name: Commit and tag

@@ -1,6 +1,6 @@
 pkgbase = discord-fix
 	pkgdesc = Fixes Discord's forced update block on Arch by auto-setting SKIP_HOST_UPDATE in user settings.json
-	pkgver = 1.0.0
+	pkgver = 0.0.1
 	pkgrel = 1
 	url = https://github.com/weselben/discord-fix
 	install = discord-fix.install
@@ -9,9 +9,12 @@ pkgbase = discord-fix
 	depends = discord
 	depends = bash
 	depends = jq
+	depends = procps-ng
 	source = discord-fix-script.sh
 	source = discord-fix.hook
-	sha512sums = ffd9aa093fec8e51f7b51e90f9c4c38d378cc4e8c87d55bdfab539caf8a003d0c7338c540eeac1066bf9e84f5506a9121e36f9b02838ad294eb4e25d45ed92ba
+	source = LICENSE
+	sha512sums = cec8f2f43c15b7b5ba71ac8ef438161d99aea500618985be1f5e23e1ee3e6c519c2673f052cb2907b71b99ba172943b3a265c37071c90a89d10cf5332581f79f
 	sha512sums = d11ad03b7fa73193db9f76e8272d3c1d5c8f177ab52c5c75415b914910502077026af1a2d6c7599455cef946d461102c42621f2ddce2bbee2e9669a522553d32
+	sha512sums = b1a28d1d68d9f52d70a9a06d1ddc5992b634f8ce9cc4cadd1bc77af543ea2f6c93eab760ff1d81479a38f9f402256e7dbe663a108a38bbe08806b2e6b060ca2e
 
 pkgname = discord-fix
