@@ -196,14 +196,14 @@ jobs:
           body: |
             ## Quick Install
             ```bash
-            curl -sL $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.assets[] | select(.name | endswith(".pkg.tar.zst")) | .browser_download_url') | sudo pacman -U -
+            curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | grep -Eo 'https://[^"]+\.pkg\.tar\.zst' | head -1 | xargs curl -L -o /tmp/pkg.tar.zst && sudo pacman -U /tmp/pkg.tar.zst
             ```
-            
+             
             ## Manual Install
             ```bash
             sudo pacman -U ${{ needs.build-and-test.outputs.pkgfile }}
             ```
-            
+             
             ## Checksums
             See attached `.sha256` and `.sha512` files.
         env:

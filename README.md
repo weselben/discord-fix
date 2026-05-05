@@ -20,9 +20,9 @@ Discord on Linux periodically forces updates that can break the application or i
 
 ### From GitHub Releases (recommended for friends before AUR submission)
 
-**One-liner (pipe latest release directly to pacman):**
+**One-liner (download + install latest release):**
 ```bash
-curl -sL $(curl -s https://api.github.com/repos/weselben/discord-fix/releases/latest | jq -r '.assets[0].browser_download_url') | sudo pacman -U -
+curl -s https://api.github.com/repos/weselben/discord-fix/releases/latest | grep -Eo 'https://[^"]+\.pkg\.tar\.zst' | head -1 | xargs curl -L -o /tmp/pkg.tar.zst && sudo pacman -U /tmp/pkg.tar.zst
 ```
 
 **Latest release direct link:**
