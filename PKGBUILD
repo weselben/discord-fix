@@ -6,14 +6,17 @@ pkgdesc="Fixes Discord's forced update block on Arch by auto-setting SKIP_HOST_U
 arch=('any')
 url='https://github.com/weselben/discord-fix'
 license=('MIT')
-depends=('discord' 'bash' 'jq')
+depends=('discord' 'bash' 'jq' 'procps-ng')
 install=discord-fix.install
 source=("discord-fix-script.sh"
-        "discord-fix.hook")
-sha512sums=('ffd9aa093fec8e51f7b51e90f9c4c38d378cc4e8c87d55bdfab539caf8a003d0c7338c540eeac1066bf9e84f5506a9121e36f9b02838ad294eb4e25d45ed92ba'
-            'd11ad03b7fa73193db9f76e8272d3c1d5c8f177ab52c5c75415b914910502077026af1a2d6c7599455cef946d461102c42621f2ddce2bbee2e9669a522553d32')
+        "discord-fix.hook"
+        "LICENSE")
+sha512sums=('5691cdc328ab4ac06d158e1b68ff6d016e94eea1e979e41b96dc1c4c1f67d0af93843749c08df1ebed494cfc8716ce27f2ce6c7c58e3810c6fc1fce3e1f6141c'
+            'd11ad03b7fa73193db9f76e8272d3c1d5c8f177ab52c5c75415b914910502077026af1a2d6c7599455cef946d461102c42621f2ddce2bbee2e9669a522553d32'
+            'b1a28d1d68d9f52d70a9a06d1ddc5992b634f8ce9cc4cadd1bc77af543ea2f6c93eab760ff1d81479a38f9f402256e7dbe663a108a38bbe08806b2e6b060ca2e')
 
 package() {
   install -Dm755 "$srcdir/discord-fix-script.sh" "$pkgdir/usr/lib/discord-fix/discord-fix-script.sh"
   install -Dm644 "$srcdir/discord-fix.hook" "$pkgdir/usr/share/libalpm/hooks/discord-fix.hook"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

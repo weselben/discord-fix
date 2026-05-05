@@ -1,0 +1,186 @@
+name: Build, Test & Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  PKG_NAME: discord-fix
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      pkgfile: ${{ steps.pkgname.outputs.pkgfile }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set version
+        id: version
+        run: |
+          # Semver from conventional commits or date fallback
+          VERSION=$(git log --oneline --format=%s $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD")..HEAD | \
+            grep -oP '^feat(\([^)]+\))?!?:' && echo "minor" || \
+            git log --oneline --format=%s $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD")..HEAD | \
+            grep -q "^fix:" && echo "patch" || echo "patch")
+          
+          # Simple semver: use date if no tags, increment patch if tag exists
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          BASE_VERSION=${LATEST_TAG#v}
+          
+          if [[ "$VERSION" == "minor" ]]; then
+            IFS='.' read -r major minor patch <<< "$BASE_VERSION"
+            NEW_VERSION="$((major)).$((minor + 1)).0"
+          else
+            IFS='.' read -r major minor patch <<< "$BASE_VERSION"
+            NEW_VERSION="$((major)).$((minor)).$((patch + 1))"
+          fi
+          
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $NEW_VERSION"
+
+      - name: Build in Arch container
+        id: build
+        run: |
+          docker run --rm -v $(pwd):/ws archlinux:latest /bin/bash -c "
+            set -e
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm base-devel jq procps-ng
+            useradd -m builder || true
+            chown -R builder:builder /ws
+            cd /ws
+            su builder -c 'makepkg -s --noconfirm'
+          "
+          echo "Build completed"
+
+      - name: Get package filename
+        id: pkgname
+        run: |
+          PKGFILE=$(ls *.pkg.tar.zst | head -1)
+          echo "pkgfile=$PKGFILE" >> $GITHUB_OUTPUT
+          echo "Package: $PKGFILE"
+
+      - name: Generate checksums
+        id: checksums
+        run: |
+          for f in *.pkg.tar.zst; do
+            sha256sum "$f" > "${f}.sha256"
+            sha512sum "$f" > "${f}.sha512"
+            echo "SHA256: $(sha256sum "$f")"
+            echo "SHA512: $(sha512sum "$f")"
+          done
+
+      - name: Test in mock environment
+        run: |
+          # Create mock home with Discord config
+          TEST_HOME=$(mktemp -d)
+          mkdir -p "$TEST_HOME/.config/discord"
+          echo '{"SKIP_HOST_UPDATE": false}' > "$TEST_HOME/.config/discord/settings.json"
+          
+          # Mock discord binary
+          mkdir -p /usr/bin 2>/dev/null || true
+          echo '#!/bin/bash' > /usr/bin/discord 2>/dev/null || true
+          chmod +x /usr/bin/discord 2>/dev/null || true
+          
+          # Run script against test home
+          echo "Testing script..."
+          HOME="$TEST_HOME" bash discord-fix-script.sh
+          
+          # Verify settings updated
+          echo "Verifying settings..."
+          jq -e '.SKIP_HOST_UPDATE == true' "$TEST_HOME/.config/discord/settings.json" || {
+            echo "TEST FAILED: SKIP_HOST_UPDATE not set to true"
+            exit 1
+          }
+          
+          # Check backup created
+          ls "$TEST_HOME/.config/discord/settings.json.discord-fix-backup-"* >/dev/null 2>&1 || {
+            echo "TEST FAILED: Backup not created"
+            exit 1
+          }
+          
+          echo "✓ All tests passed"
+          rm -rf "$TEST_HOME"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            *.pkg.tar.zst
+            *.pkg.tar.zst.sha256
+            *.pkg.tar.zst.sha512
+            PKGBUILD
+            discord-fix-script.sh
+            discord-fix.hook
+            LICENSE
+
+  release:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+
+      - name: Update PKGBUILD checksums
+        run: |
+          # Update checksums in PKGBUILD
+          sed -i "s/sha512sums=.*/sha512sums=('$(sha512sum discord-fix-script.sh | cut -d' ' -f1)' '$(sha512sum discord-fix.hook | cut -d' ' -f1)' '$(sha512sum LICENSE | cut -d' ' -f1)')/" PKGBUILD
+          
+          # Update version
+          sed -i "s/pkgver=.*/pkgver=${{ needs.build-and-test.outputs.version }}/" PKGBUILD
+          
+          echo "Updated PKGBUILD:"
+          cat PKGBUILD
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add PKGBUILD
+          git commit -m "chore(release): v${{ needs.build-and-test.outputs.version }}" || echo "No changes to commit"
+          
+          git tag "v${{ needs.build-and-test.outputs.version }}"
+          git push origin main --tags || echo "Push failed, may need to pull first"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ needs.build-and-test.outputs.version }}"
+          name: "Release v${{ needs.build-and-test.outputs.version }}"
+          files: |
+            ${{ needs.build-and-test.outputs.pkgfile }}
+            ${{ needs.build-and-test.outputs.pkgfile }}.sha256
+            ${{ needs.build-and-test.outputs.pkgfile }}.sha512
+          generate_release_notes: true
+          make_latest: true
+          body: |
+            ## Quick Install
+            ```bash
+            curl -sL $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r '.assets[] | select(.name | endswith(".pkg.tar.zst")) | .browser_download_url') | sudo pacman -U -
+            ```
+            
+            ## Manual Install
+            ```bash
+            sudo pacman -U ${{ needs.build-and-test.outputs.pkgfile }}
+            ```
+            
+            ## Checksums
+            See attached `.sha256` and `.sha512` files.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
