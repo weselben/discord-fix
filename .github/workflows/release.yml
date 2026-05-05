@@ -164,11 +164,17 @@ jobs:
 
       - name: Update PKGBUILD checksums
         run: |
-          NEW_CHECKSUMS="sha512sums=('$(sha512sum discord-fix-script.sh | cut -d' ' -f1)' '$(sha512sum discord-fix.hook | cut -d' ' -f1)' '$(sha512sum LICENSE | cut -d' ' -f1)')"
-          sed -i "/^sha512sums=/c\\$NEW_CHECKSUMS" PKGBUILD
+          CHECKSUM1=$(sha512sum discord-fix-script.sh | cut -d' ' -f1)
+          CHECKSUM2=$(sha512sum discord-fix.hook | cut -d' ' -f1)
+          CHECKSUM3=$(sha512sum LICENSE | cut -d' ' -f1)
+          NEW_CHECKSUMS="sha512sums=('$CHECKSUM1' '$CHECKSUM2' '$CHECKSUM3')"
+          sed -i "s|^sha512sums=.*|$NEW_CHECKSUMS|" PKGBUILD
 
           echo "Updated PKGBUILD:"
           cat PKGBUILD
+
+          echo "Verifying checksums..."
+          sha512sum discord-fix-script.sh discord-fix.hook LICENSE
 
       - name: Commit and push
         run: |

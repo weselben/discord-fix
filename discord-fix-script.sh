@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+# Removed 'set -euo pipefail' to ensure output is visible
 
 # === CONFIGURATION ===
 SETTING_KEY="SKIP_HOST_UPDATE"
@@ -81,21 +81,30 @@ notify_restart() {
 
 # === MAIN ===
 
+echo "=== discord-fix script starting ==="
+echo "Running as user: $(whoami)"
+echo "Date: $(date)"
+
 # Check for jq (required for validation)
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
+echo "jq found: $(command -v jq)"
 
 # Process all user homes (or just current user if HOME is set to a test dir)
 if [[ -n "${HOME_OVERRIDE:-}" ]]; then
+  echo "Processing single home (override): $HOME_OVERRIDE"
   process_home "$HOME_OVERRIDE"
 else
+  echo "Processing all user homes from /etc/passwd..."
   while IFS=: read -r user _ _ _ _ home _; do
     if [[ "$home" == /home/* ]] || [[ "$home" == /root ]]; then
+      echo "Checking home: $home (user: $user)"
       [[ -d "$home" ]] && process_home "$home" || true
     fi
   done < /etc/passwd
+  echo "Finished processing all homes."
 fi
 
 # Notify to restart Discord

@@ -1,4 +1,9 @@
 post_install() {
   echo "Running discord-fix to apply settings..."
-  /usr/lib/discord-fix/discord-fix-script.sh
+  /usr/lib/discord-fix/discord-fix-script.sh || echo "WARNING: discord-fix-script exited with error $?"
+}
+
+post_upgrade() {
+  echo "Upgrading discord-fix, re-applying settings..."
+  /usr/lib/discord-fix/discord-fix-script.sh || echo "WARNING: discord-fix-script exited with error $?"
 }
