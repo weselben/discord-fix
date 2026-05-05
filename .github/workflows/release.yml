@@ -115,11 +115,11 @@ jobs:
           }
           
           echo "Verifying other keys preserved..."
-          for key in IS_MAXIMIZED SHOULD_ASK_FOR_HARDWARE_ACCELERATION START_MINIMIZED LAST_RUN_VERSION; do
-            jq -e ".$key" "$TEST_HOME/.config/discord/settings.json" >/dev/null || {
+          for key in IS_MAXIMIZED IS_MINIMIZED SHOULD_ASK_FOR_HARDWARE_ACCELERATION START_MINIMIZED LAST_RUN_VERSION; do
+            if ! jq -e --arg key "$key" 'has($key)' "$TEST_HOME/.config/discord/settings.json" >/dev/null; then
               echo "TEST FAILED: $key was removed"
               exit 1
-            }
+            fi
           done
           
           echo "Checking backup created..."
