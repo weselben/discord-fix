@@ -158,10 +158,17 @@ jobs:
   release:
     needs: [version, build-and-test]
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm pacman-contrib github-cli
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -170,17 +177,9 @@ jobs:
 
       - name: Update PKGBUILD checksums
         run: |
-          CHECKSUM1=$(sha512sum discord-fix-script.sh | cut -d' ' -f1)
-          CHECKSUM2=$(sha512sum discord-fix.hook | cut -d' ' -f1)
-          CHECKSUM3=$(sha512sum LICENSE | cut -d' ' -f1)
-          NEW_CHECKSUMS="sha512sums=('$CHECKSUM1' '$CHECKSUM2' '$CHECKSUM3')"
-          sed -i "s|^sha512sums=.*|$NEW_CHECKSUMS|" PKGBUILD
-
+          updpkgsums
           echo "Updated PKGBUILD:"
           cat PKGBUILD
-
-          echo "Verifying checksums..."
-          sha512sum discord-fix-script.sh discord-fix.hook LICENSE
 
       - name: Commit and push
         run: |
@@ -222,12 +221,19 @@ jobs:
   pacman-repo:
     needs: [version, build-and-test, release]
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm github-cli
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -236,7 +242,9 @@ jobs:
 
       - name: Create pacman repo
         run: |
-          docker run --rm -v $(pwd):/workspace archlinux:latest bash -c "pacman -Syu --noconfirm && mkdir -p /workspace/x86_64 && cp /workspace/*.pkg.tar.zst /workspace/x86_64/ && repo-add /workspace/x86_64/discord-fix.db.tar.zst /workspace/x86_64/*.pkg.tar.zst"
+          mkdir -p x86_64
+          cp *.pkg.tar.zst x86_64/
+          repo-add x86_64/discord-fix.db.tar.zst x86_64/*.pkg.tar.zst
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
