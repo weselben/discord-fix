@@ -52,8 +52,12 @@ jobs:
         run: |
           docker run --rm -v $(pwd):/ws archlinux:latest /bin/bash -c "
             set -e
+            # Enable extra repo if not enabled
+            grep -q '^\[extra\]' /etc/pacman.conf || echo -e '\n[extra]\nInclude = /etc/pacman.d/mirrorlist' >> /etc/pacman.conf
+            
             pacman -Syu --noconfirm
-            pacman -S --noconfirm base-devel jq procps-ng
+            pacman -S --noconfirm base-devel jq procps-ng discord
+            
             useradd -m builder || true
             chown -R builder:builder /ws
             cd /ws
