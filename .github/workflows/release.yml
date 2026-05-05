@@ -60,7 +60,7 @@ jobs:
 
       - name: Build package
         run: |
-          su builder -c "makepkg -s --noconfirm"
+          su builder -c "makepkg -s --noconfirm --nosign"
           
           for f in *.pkg.tar.zst; do
             sha256sum "$f" > "${f}.sha256"
