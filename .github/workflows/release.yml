@@ -30,6 +30,10 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm base-devel jq procps-ng discord git sudo
+          pacman-key --init
+          # Disable package signing (CI doesn't need signed packages)
+          sed -i 's/^SIGNPKG=.*/SIGNPKG=no/' /etc/makepkg.conf
+          sed -i 's/^BUILDPKG=.*/BUILDPKG=no/' /etc/makepkg.conf
 
       - name: Setup builder user
         run: |
@@ -83,9 +87,13 @@ jobs:
           chmod +x /usr/bin/discord
           
           echo "Testing script..."
-          HOME="$TEST_HOME" bash discord-fix-script.sh
+          env HOME_OVERRIDE="$TEST_HOME" bash discord-fix-script.sh
           
           echo "Verifying settings..."
+          echo "File content:"
+          cat "$TEST_HOME/.config/discord/settings.json"
+          echo "Hex dump:"
+          xxd "$TEST_HOME/.config/discord/settings.json" | head -20
           jq -e '.SKIP_HOST_UPDATE == true' "$TEST_HOME/.config/discord/settings.json" || {
             echo "TEST FAILED: SKIP_HOST_UPDATE not set to true"
             exit 1
