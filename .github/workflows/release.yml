@@ -50,18 +50,25 @@ jobs:
       - name: Build in Arch container
         id: build
         run: |
-          docker run --rm -v $(pwd):/ws archlinux:latest /bin/bash -c "
+          docker run --rm --privileged -v $(pwd):/ws archlinux:latest /bin/bash -c "
             set -e
-            # Enable extra repo if not enabled
+            # Enable extra repo
             grep -q '^\[extra\]' /etc/pacman.conf || echo -e '\n[extra]\nInclude = /etc/pacman.d/mirrorlist' >> /etc/pacman.conf
             
             pacman -Syu --noconfirm
             pacman -S --noconfirm base-devel jq procps-ng discord
             
-            useradd -m builder || true
+            # Create builder user with same UID as workspace
+            useradd -m -u $(stat -c '%u' /ws) builder || true
             chown -R builder:builder /ws
             cd /ws
             su builder -c 'makepkg -s --noconfirm'
+            
+            # Generate checksums inside container
+            for f in *.pkg.tar.zst; do
+              sha256sum \"\$f\" > \"\${f}.sha256\"
+              sha512sum \"\$f\" > \"\${f}.sha512\"
+            done
           "
           echo "Build completed"
 
@@ -71,16 +78,6 @@ jobs:
           PKGFILE=$(ls *.pkg.tar.zst | head -1)
           echo "pkgfile=$PKGFILE" >> $GITHUB_OUTPUT
           echo "Package: $PKGFILE"
-
-      - name: Generate checksums
-        id: checksums
-        run: |
-          for f in *.pkg.tar.zst; do
-            sha256sum "$f" > "${f}.sha256"
-            sha512sum "$f" > "${f}.sha512"
-            echo "SHA256: $(sha256sum "$f")"
-            echo "SHA512: $(sha512sum "$f")"
-          done
 
       - name: Test in mock environment
         run: |
