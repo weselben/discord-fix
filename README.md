@@ -23,13 +23,28 @@ Discord on Linux periodically forces updates that can break the application or i
 
 ## 📦 Installation
 
-### Quick Install (Recommended)
+### Option 1: Custom Pacman Repository (Recommended)
+
+Add the repository to `/etc/pacman.conf`:
+
+```ini
+[discord-fix]
+SigLevel = Optional TrustAll
+Server = https://weselben.github.io/discord-fix/$arch
+```
+
+Then install:
+```bash
+sudo pacman -Sy discord-fix
+```
+
+### Option 2: Quick Install (GitHub Releases)
 
 ```bash
 curl -s https://api.github.com/repos/weselben/discord-fix/releases/latest | grep -Eo 'https://[^"]+\.pkg\.tar\.zst' | head -1 | xargs curl -L -o /tmp/pkg.tar.zst && sudo pacman -U /tmp/pkg.tar.zst
 ```
 
-### Build from Source
+### Option 3: Build from Source
 
 ```bash
 git clone https://github.com/weselben/discord-fix.git

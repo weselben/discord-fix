@@ -218,3 +218,31 @@ jobs:
             See attached `.sha256` and `.sha512` files.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pacman-repo:
+    needs: [version, build-and-test, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+
+      - name: Create pacman repo
+        run: |
+          docker run --rm -v $(pwd):/workspace archlinux:latest bash -c "pacman -Syu --noconfirm && mkdir -p /workspace/x86_64 && cp /workspace/*.pkg.tar.zst /workspace/x86_64/ && repo-add /workspace/x86_64/discord-fix.db.tar.zst /workspace/x86_64/*.pkg.tar.zst"
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: x86_64/
+          publish_branch: gh-pages
+          destination_dir: ./
+          keep_files: true
