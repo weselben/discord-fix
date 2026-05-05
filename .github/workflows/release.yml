@@ -115,7 +115,7 @@ jobs:
           }
           
           echo "Verifying other keys preserved..."
-          for key in IS_MAXIMIZED SHOW_ASK_FOR_HARDWARE_ACCELERATION START_MINIMIZED LAST_RUN_VERSION; do
+          for key in IS_MAXIMIZED SHOULD_ASK_FOR_HARDWARE_ACCELERATION START_MINIMIZED LAST_RUN_VERSION; do
             jq -e ".$key" "$TEST_HOME/.config/discord/settings.json" >/dev/null || {
               echo "TEST FAILED: $key was removed"
               exit 1
