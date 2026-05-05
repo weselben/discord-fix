@@ -13,13 +13,34 @@ env:
   PKG_NAME: discord-fix
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.semantic.outputs.new_tag }}
+      previous_tag: ${{ steps.semantic.outputs.previous_tag }}
+      version: ${{ steps.semantic.outputs.new_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute semantic version
+        id: semantic
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          release_branches: main
+          tag_prefix: v
+
   build-and-test:
+    needs: version
+    if: needs.version.outputs.new_tag != needs.version.outputs.previous_tag
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
       options: --privileged
     outputs:
-      version: ${{ steps.version.outputs.version }}
       pkgfile: ${{ steps.pkgname.outputs.pkgfile }}
     steps:
       - uses: actions/checkout@v4
@@ -31,9 +52,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm base-devel jq procps-ng discord git sudo
           pacman-key --init
-          # Disable package signing (CI doesn't need signed packages)
           sed -i 's/^SIGNPKG=.*/SIGNPKG=no/' /etc/makepkg.conf
-          sed -i 's/^BUILDPKG=.*/BUILDPKG=no/' /etc/makepkg.conf
 
       - name: Setup builder user
         run: |
@@ -41,32 +60,20 @@ jobs:
           echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder
           chown -R builder:builder .
 
-      - name: Set version
-        id: version
+      - name: Update PKGBUILD version
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          BASE_VERSION=${LATEST_TAG#v}
-          
-          if git log --oneline --format=%s $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD")..HEAD | grep -qE '^feat(\([^)]+\))?!?:'; then
-            IFS='.' read -r major minor patch <<< "$BASE_VERSION"
-            NEW_VERSION="$((major)).$((minor + 1)).0"
-          else
-            IFS='.' read -r major minor patch <<< "$BASE_VERSION"
-            NEW_VERSION="$((major)).$((minor)).$((patch + 1))"
-          fi
-          
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $NEW_VERSION"
+          sed -i "s/pkgver=.*/pkgver=${{ needs.version.outputs.version }}/" PKGBUILD
+          echo "Version: ${{ needs.version.outputs.version }}"
 
       - name: Build package
         run: |
           su builder -c "makepkg -s --noconfirm --nosign"
-          
+
           for f in *.pkg.tar.zst; do
             sha256sum "$f" > "${f}.sha256"
             sha512sum "$f" > "${f}.sha512"
           done
-          
+
           echo "Build completed"
 
       - name: Get package filename
@@ -80,8 +87,7 @@ jobs:
         run: |
           TEST_HOME=$(mktemp -d)
           mkdir -p "$TEST_HOME/.config/discord"
-          
-          # Realistic Discord settings.json with multiple values
+
           cat > "$TEST_HOME/.config/discord/settings.json" << 'JSON'
           {
             "SKIP_HOST_UPDATE": false,
@@ -92,28 +98,27 @@ jobs:
             "LAST_RUN_VERSION": "0.0.99"
           }
           JSON
-          
+
           echo "Initial settings:"
           cat "$TEST_HOME/.config/discord/settings.json"
-          
-          # Mock discord binary
+
           mkdir -p /usr/bin
           echo '#!/bin/bash' > /usr/bin/discord
           chmod +x /usr/bin/discord
-          
+
           echo "Testing script..."
           export HOME_OVERRIDE="$TEST_HOME"
           bash discord-fix-script.sh
-          
+
           echo "Final settings:"
           cat "$TEST_HOME/.config/discord/settings.json"
-          
+
           echo "Verifying SKIP_HOST_UPDATE = true..."
           jq -e '.SKIP_HOST_UPDATE == true' "$TEST_HOME/.config/discord/settings.json" || {
             echo "TEST FAILED: SKIP_HOST_UPDATE not set to true"
             exit 1
           }
-          
+
           echo "Verifying other keys preserved..."
           for key in IS_MAXIMIZED IS_MINIMIZED SHOULD_ASK_FOR_HARDWARE_ACCELERATION START_MINIMIZED LAST_RUN_VERSION; do
             if ! jq -e --arg key "$key" 'has($key)' "$TEST_HOME/.config/discord/settings.json" >/dev/null; then
@@ -121,13 +126,13 @@ jobs:
               exit 1
             fi
           done
-          
+
           echo "Checking backup created..."
           ls "$TEST_HOME/.config/discord/settings.json.discord-fix-backup-"* >/dev/null 2>&1 || {
             echo "TEST FAILED: Backup not created"
             exit 1
           }
-          
+
           echo "All tests passed - JSON structure preserved"
           rm -rf "$TEST_HOME"
 
@@ -145,7 +150,7 @@ jobs:
             LICENSE
 
   release:
-    needs: build-and-test
+    needs: [version, build-and-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -157,36 +162,29 @@ jobs:
         with:
           name: release-assets
 
-      - name: Update PKGBUILD
+      - name: Update PKGBUILD checksums
         run: |
-          # Generate fresh checksums line (avoids multi-line sed issues)
           NEW_CHECKSUMS="sha512sums=('$(sha512sum discord-fix-script.sh | cut -d' ' -f1)' '$(sha512sum discord-fix.hook | cut -d' ' -f1)' '$(sha512sum LICENSE | cut -d' ' -f1)')"
-          
-          # Replace entire checksums line
           sed -i "/^sha512sums=/c\\$NEW_CHECKSUMS" PKGBUILD
-          
-          # Update version
-          sed -i "s/pkgver=.*/pkgver=${{ needs.build-and-test.outputs.version }}/" PKGBUILD
-          
+
           echo "Updated PKGBUILD:"
           cat PKGBUILD
 
-      - name: Commit and tag
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git add PKGBUILD
-          git commit -m "chore(release): v${{ needs.build-and-test.outputs.version }}" || echo "No changes"
-          
-          git tag "v${{ needs.build-and-test.outputs.version }}"
-          git push origin main --tags || echo "Push failed"
+          git commit -m "chore(release): ${{ needs.version.outputs.version }}" || echo "No changes"
+
+          git push origin main || echo "Push failed"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ needs.build-and-test.outputs.version }}"
-          name: "Release v${{ needs.build-and-test.outputs.version }}"
+          tag_name: "${{ needs.version.outputs.new_tag }}"
+          name: "Release ${{ needs.version.outputs.new_tag }}"
           files: |
             ${{ needs.build-and-test.outputs.pkgfile }}
             ${{ needs.build-and-test.outputs.pkgfile }}.sha256
@@ -198,12 +196,12 @@ jobs:
             ```bash
             curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | grep -Eo 'https://[^"]+\.pkg\.tar\.zst' | head -1 | xargs curl -L -o /tmp/pkg.tar.zst && sudo pacman -U /tmp/pkg.tar.zst
             ```
-             
+
             ## Manual Install
             ```bash
             sudo pacman -U ${{ needs.build-and-test.outputs.pkgfile }}
             ```
-             
+
             ## Checksums
             See attached `.sha256` and `.sha512` files.
         env:
